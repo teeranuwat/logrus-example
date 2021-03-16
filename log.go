@@ -86,6 +86,7 @@ func BasicAPI() {
 	app := fiber.New()
 	log := logrus.New()
 	log.Formatter = new(logrus.JSONFormatter)
+	var logEntry *logrus.Entry
 
 	defer func() {
 		err := recover()
@@ -101,17 +102,35 @@ func BasicAPI() {
 		},
 	}))
 
+	app.Use(func(c *fiber.Ctx) error {
+		logEntry = log.WithFields(logrus.Fields{
+			"requestid":  c.Response().Header.Peek(fiber.HeaderXRequestID),
+			"endpoint":   string(c.Request().URI().Path()),
+			"from":       c.IP(),
+			"method":     c.Method(),
+			"user-agent": string(c.Context().UserAgent()),
+		})
+		return c.Next()
+	})
+
 	app.Get("/characters", func(c *fiber.Ctx) error {
 		// log.WithField("RequestID", c.Response().Header.Peek(fiber.HeaderXRequestID))
-
-		log.WithFields(logrus.Fields{
-			"requestid": c.Response().Header.Peek(fiber.HeaderXRequestID),
-			"endpoint":  string(c.Request().URI().Path()),
-			"from":      c.IP(),
-		}).Info()
-
+		var err error
+		if _query := c.Query("test"); _query != "" {
+			err = NewError(fmt.Sprintf("Why add this query : %s", _query))
+		}
+		customLog(err, c, logEntry)
 		return c.Status(200).JSON("You Got .....!!!!")
 	})
 
 	log.Panic(app.Listen(":8080"))
+}
+
+// for multiple use
+func customLog(err error, c *fiber.Ctx, logEntry *logrus.Entry) {
+	if err != nil {
+		logEntry.Error(err.Error())
+		return
+	}
+	logEntry.Info()
 }
